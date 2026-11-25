@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Датчик времени ко сну — Трекер подъёмов</title>
+    <!-- Подключение Tailwind CSS для адаптивной и современной вёрстки -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Подключение шрифта Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        night: {
+                            950: '#090d16',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-night-950 text-slate-100 font-sans antialiased min-h-screen selection:bg-indigo-500 selection:text-white">
+
+    <!-- Фоновое свечение (ночной/утренний градиент) -->
+    <div class="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+        <div class="absolute -top-40 -left-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl"></div>
+        <div class="absolute top-1/3 -right-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl"></div>
+    </div>
+
+    <!-- Всплывающее уведомление (Toast вместо alert) -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 border border-slate-700 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 max-w-sm">
+        <span id="toast-icon" class="text-xl">✨</span>
+        <span id="toast-message" class="text-sm font-medium">Уведомление</span>
+    </div>
+
+    <!-- ЭКРАН 1: ПРИВЕТСТВЕННЫЙ ЭКРАН / РЕГИСТРАЦИЯ ПРОФИЛЯ -->
+    <section id="welcome-screen" class="min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-amber-500 text-3xl mb-4 shadow-lg shadow-indigo-500/20">
+                    🌙
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-indigo-300 via-white to-amber-200 bg-clip-text text-transparent">
+                    Датчик времени ко сну
+                </h1>
+                <p class="text-slate-400 text-sm mt-2">
+                    Создайте профиль, чтобы отслеживать режим подъёмов и побеждать утреннюю лень
+                </p>
+            </div>
+
+            <form id="profile-form" class="space-y-4">
+                <div>
+                    <label for="firstName" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Имя *</label>
+                    <input type="text" id="firstName" required placeholder="Например: Алексей"
+                        class="w-full bg-slate-800/90 border border-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition">
+                </div>
+
+                <div>
+                    <label for="lastName" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Фамилия *</label>
+                    <input type="text" id="lastName" required placeholder="Например: Смирнов"
+                        class="w-full bg-slate-800/90 border border-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition">
+                </div>
+
+                <div>
+                    <label for="nickname" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Никнейм *</label>
+                    <div class="relative">
+                        <span class="absolute left-4 top-3.5 text-slate-500 font-medium">@</span>
+                        <input type="text" id="nickname" required placeholder="early_bird"
+                            class="w-full bg-slate-800/90 border border-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 rounded-xl pl-9 pr-4 py-3 text-white placeholder-slate-500 outline-none transition">
+                    </div>
+                </div>
+
+                <button type="submit"
+                    class="w-full mt-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold py-3.5 px-6 rounded-xl shadow-lg shadow-indigo-600/30 transition transform active:scale-[0.98] cursor-pointer">
+                    Сохранить профиль и начать →
+                </button>
+            </form>
+        </div>
+    </section>
+
+    <!-- ЭКРАН 2: ОСНОВНОЕ ПРИЛОЖЕНИЕ -->
+    <main id="app-screen" class="hidden max-w-5xl mx-auto px-4 py-6 sm:py-10 space-y-8">
+        
+        <!-- ШАПКА ПРОФИЛЯ -->
+        <header class="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <div id="avatar-initials" class="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl font-bold text-white shadow-inner shrink-0">
+                    АС
+                </div>
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h2 id="display-fullname" class="text-lg sm:text-xl font-bold text-white">Имя Фамилия</h2>
+                        <span id="display-nickname" class="text-xs font-medium px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                            @nickname
+                        </span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-400 mt-0.5 flex items-center gap-1.5">
+                        <span>☀️</span> Датчик времени ко сну активен
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <button id="demo-data-btn" type="button"
+                    class="flex-1 sm:flex-none text-xs sm:text-sm bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-medium px-3.5 py-2.5 rounded-xl transition cursor-pointer">
+                    ✨ Заполнить демо-данными за месяц
+                </button>
+                <button id="edit-profile-btn" type="button"
+                    class="flex-1 sm:flex-none text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium px-3.5 py-2.5 rounded-xl transition cursor-pointer">
+                    ✏️ Профиль
+                </button>
+            </div>
+        </header>
+
+        <!-- БЛОК ДОБАВЛЕНИЯ НОВОЙ ЗАПИСИ О ПОДЪЁМЕ -->
+        <section class="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5">
+                <div>
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <span>⏰</span> Записать подъём
+                    </h3>
+                    <p class="text-xs text-slate-400">Укажите запланированное и фактическое время пробуждения</p>
+                </div>
+                <button id="quick-wake-btn" type="button"
+                    class="self-start sm:self-auto bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs sm:text-sm font-semibold px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer active:scale-95">
+                    <span>⚡</span> Быстрый подъём (Сейчас)
+                </button>
+            </div>
+
+            <form id="wake-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                <!-- Дата -->
+                <div>
+                    <label for="entry-date" class="block text-xs font-medium text-slate-400 mb-1.5">Дата</label>
+                    <input type="date" id="entry-date" required
+                        class="w-full bg-slate-800 border border-slate-700 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition">
+                </div>
+
+                <!-- Столбец 1: План -->
+                <div>
+                    <label for="plan-time" class="block text-xs font-medium text-indigo-300 mb-1.5">1. План (хотел встать)</label>
+                    <input type="time" id="plan-time" required value="07:00"
+                        class="w-full bg-slate-800 border border-slate-700 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition">
+                </div>
+
+                <!-- Столбец 2: Факт -->
+                <div>
+                    <label for="actual-time" class="block text-xs font-medium text-amber-300 mb-1.5">2. Факт (реально встал)</label>
+                    <input type="time" id="actual-time" required value="07:05"
+                        class="w-full bg-slate-800 border border-slate-700 focus:border-amber-500 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition">
+                </div>
+
+                <!-- Оценка бодрости -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Самочувствие</label>
+                    <div class="grid grid-cols-3 gap-1.5 bg-slate-800 p-1 rounded-xl border border-slate-700" id="mood-selector">
+                        <button type="button" data-mood="😴" class="mood-btn py-1.5 rounded-lg text-lg hover:bg-slate-700 transition cursor-pointer" title="Сонный">😴</button>
+                        <button type="button" data-mood="😐" class="mood-btn py-1.5 rounded-lg text-lg bg-indigo-600/40 ring-1 ring-indigo-400 transition cursor-pointer" title="Нормально">😐</button>
+                        <button type="button" data-mood="⚡" class="mood-btn py-1.5 rounded-lg text-lg hover:bg-slate-700 transition cursor-pointer" title="Бодрый">⚡</button>
+                    </div>
+                    <input type="hidden" id="selected-mood" value="😐">
+                </div>
+
+                <!-- Кнопка сохранения -->
+                <div>
+                    <button type="submit"
+                        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-4 rounded-xl shadow-lg shadow-indigo-600/20 transition cursor-pointer active:scale-[0.98]">
+                        + Добавить
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- ОСНОВНАЯ ТАБЛИЦА ОТСЛЕЖИВАНИЯ (3 ГЛАВНЫХ СТОЛБЦА + ДАТА) -->
+        <section class="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                <div>
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <span>📋</span> Журнал подъёмов
+                    </h3>
+                    <p class="text-xs text-slate-400">Автоматический расчёт разницы между планом и реальным временем</p>
+                </div>
+                <button id="clear-data-btn" type="button"
+                    class="self-start sm:self-auto text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-xl transition cursor-pointer">
+                    Очистить записи
+                </button>
+            </div>
+
+            <div class="overflow-x-auto rounded-2xl border border-slate-800">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-800/90 text-xs uppercase tracking-wider text-slate-400 border-b border-slate-700">
+                            <th class="py-3.5 px-4 font-semibold">Дата</th>
+                            <th class="py-3.5 px-4 font-semibold text-indigo-300">1. План (хотел встать)</th>
+                            <th class="py-3.5 px-4 font-semibold text-amber-300">2. Факт (когда встал)</th>
+                            <th class="py-3.5 px-4 font-semibold">3. Разница (1 и 2)</th>
+                            <th class="py-3.5 px-4 font-semibold text-center">Бодрость</th>
+                            <th class="py-3.5 px-4 font-semibold text-right">Действие</th>
+                        </tr>
+                    </thead>
+                    <tbody id="records-table-body" class="divide-y divide-slate-800/80 text-sm">
+                        <!-- Строки генерируются через JS -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="empty-table-msg" class="hidden text-center py-8 text-slate-500 text-sm">
+                Записей пока нет. Добавьте первый подъём выше или нажмите «Заполнить демо-данными за месяц» ✨
+            </div>
+        </section>
+
+        <!-- МЕСЯЧНЫЙ ОБЗОР (КАЛЕНДАРЬ + СВОДНАЯ СТАТИСТИКА) -->
+        <section class="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                        <span>📅</span> Месячный обзор и статистика
+                    </h3>
+                    <p class="text-xs text-slate-400">Нажмите на любой день в календаре, чтобы увидеть подробности</p>
+                </div>
+
+                <!-- Переключатель месяца -->
+                <div class="flex items-center gap-2 bg-slate-800 p-1.5 rounded-2xl border border-slate-700 self-start sm:self-auto">
+                    <button id="prev-month-btn" type="button" class="p-2 hover:bg-slate-700 rounded-xl text-slate-300 transition cursor-pointer" title="Предыдущий месяц">
+                        ◀
+                    </button>
+                    <span id="current-month-label" class="px-3 text-sm font-semibold text-white min-w-[140px] text-center capitalize">
+                        Ноябрь 2026
+                    </span>
+                    <button id="next-month-btn" type="button" class="p-2 hover:bg-slate-700 rounded-xl text-slate-300 transition cursor-pointer" title="Следующий месяц">
+                        ▶
+                    </button>
+                </div>
+            </div>
+
+            <!-- СВОДНАЯ СТАТИСТИКА ЗА МЕСЯЦ (4 КАРТОЧКИ) -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div class="bg-slate-800/70 border border-slate-700/70 rounded-2xl p-4">
+                    <div class="text-xs text-slate-400 font-medium">Встал по плану / раньше</div>
+                    <div class="mt-1.5 flex items-baseline gap-2">
+                        <span id="stat-ontime" class="text-2xl sm:text-3xl font-extrabold text-emerald-400">0</span>
+                        <span class="text-xs text-slate-400">дн.</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/70 border border-slate-700/70 rounded-2xl p-4">
+                    <div class="text-xs text-slate-400 font-medium">Проспал</div>
+                    <div class="mt-1.5 flex items-baseline gap-2">
+                        <span id="stat-overslept" class="text-2xl sm:text-3xl font-extrabold text-rose-400">0</span>
+                        <span class="text-xs text-slate-400">дн.</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/70 border border-slate-700/70 rounded-2xl p-4">
+                    <div class="text-xs text-slate-400 font-medium">Среднее отклонение</div>
+                    <div class="mt-1.5 flex items-baseline gap-2">
+                        <span id="stat-avg-diff" class="text-xl sm:text-2xl font-extrabold text-indigo-300">0 мин</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/70 border border-slate-700/70 rounded-2xl p-4">
+                    <div class="text-xs text-slate-400 font-medium">Лучший стрик без опозданий</div>
+                    <div class="mt-1.5 flex items-baseline gap-2">
+                        <span id="stat-streak" class="text-2xl sm:text-3xl font-extrabold text-amber-400">0</span>
+                        <span class="text-xs text-slate-400">дн. 🔥</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ВИЗУАЛЬНЫЙ КАЛЕНДАРЬ НА ВЕСЬ МЕСЯЦ -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                <div class="lg:col-span-2 bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
+                    <!-- Дни недели -->
+                    <div class="grid grid-cols-7 gap-1.5 text-center text-xs font-semibold text-slate-500 mb-2">
+                        <div>Пн</div>
+                        <div>Вт</div>
+                        <div>Ср</div>
+                        <div>Чт</div>
+                        <div>Пт</div>
+                        <div class="text-amber-500/80">Сб</div>
+                        <div class="text-amber-500/80">Вс</div>
+                    </div>
+                    <!-- Сетка чисел -->
+                    <div id="calendar-grid" class="grid grid-cols-7 gap-1.5 sm:gap-2">
+                        <!-- Ячейки генерируются JS -->
+                    </div>
+
+                    <!-- Легенда цветов -->
+                    <div class="flex flex-wrap items-center gap-4 mt-4 pt-3 border-t border-slate-800/80 text-xs text-slate-400">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-md bg-emerald-500/30 border border-emerald-500"></span>
+                            <span>Вовремя / раньше</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-md bg-amber-500/30 border border-amber-500"></span>
+                            <span>Чуть опоздал (до 15 мин)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-md bg-rose-500/30 border border-rose-500"></span>
+                            <span>Проспал (> 15 мин)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-md bg-slate-800 border border-slate-700"></span>
+                            <span>Нет данных</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- КАРТОЧКА ДЕТАЛЕЙ ВЫБРАННОГО ДНЯ -->
+                <div id="day-details-card" class="bg-slate-800/60 border border-slate-700/80 rounded-2xl p-5 space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                        <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Детали дня</span>
+                        <span id="detail-date" class="text-sm font-bold text-indigo-300">Выберите день</span>
+                    </div>
+                    <div id="detail-content" class="text-sm text-slate-300 space-y-3">
+                        <p class="text-slate-400 text-xs leading-relaxed">
+                            Кликните на любую цветную ячейку в календаре слева, чтобы посмотреть, во сколько вы планировали встать, во сколько проснулись и какое было самочувствие.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        /**
+         * Логика приложения «Датчик времени ко сну»
+         * Хранение данных в localStorage, расчёт разницы времени, рендер таблицы и календаря.
+         */
+        document.addEventListener('DOMContentLoaded', () => {
+            // Ключи для localStorage
+            const STORAGE_PROFILE_KEY = 'sleep_sensor_profile_v1';
+            const STORAGE_RECORDS_KEY = 'sleep_sensor_records_v1';
+
+            // Состояние приложения
+            let userProfile = null;
+            let wakeRecords = [];
+            let currentCalendarDate = new Date(); // Текущий отображаемый месяц в календаре
+
+            // Элементы DOM
+            const welcomeScreen = document.getElementById('welcome-screen');
+            const appScreen = document.getElementById('app-screen');
+            const profileForm = document.getElementById('profile-form');
+            const firstNameInput = document.getElementById('firstName');
+            const lastNameInput = document.getElementById('lastName');
+            const nicknameInput = document.getElementById('nickname');
+
+            const displayFullname = document.getElementById('display-fullname');
+            const displayNickname = document.getElementById('display-nickname');
+            const avatarInitials = document.getElementById('avatar-initials');
+
+            const wakeForm = document.getElementById('wake-form');
+            const entryDateInput = document.getElementById('entry-date');
+            const planTimeInput = document.getElementById('plan-time');
+            const actualTimeInput = document.getElementById('actual-time');
+            const selectedMoodInput = document.getElementById('selected-mood');
+            const moodButtons = document.querySelectorAll('.mood-btn');
+
+            const recordsTableBody = document.getElementById('records-table-body');
+            const emptyTableMsg = document.getElementById('empty-table-msg');
+
+            const calendarGrid = document.getElementById('calendar-grid');
+            const currentMonthLabel = document.getElementById('current-month-label');
+            const detailDate = document.getElementById('detail-date');
+            const detailContent = document.getElementById('detail-content');
+
+            // Статистика
+            const statOntime = document.getElementById('stat-ontime');
+            const statOverslept = document.getElementById('stat-overslept');
+            const statAvgDiff = document.getElementById('stat-avg-diff');
+            const statStreak = document.getElementById('stat-streak');
+
+            // Вспомогательная функция уведомлений
+            let toastTimeout;
+            function showToast(message, icon = '✨') {
+                const toast = document.getElementById('toast');
+                document.getElementById('toast-message').textContent = message;
+                document.getElementById('toast-icon').textContent = icon;
+                
+                toast.classList.remove('translate-y-20', 'opacity-0');
+                clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    toast.classList.add('translate-y-20', 'opacity-0');
+                }, 3200);
+            }
+
+            // Форматирование текущей даты YYYY-MM-DD в локальном часовом поясе
+            function getLocalTodayISO() {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+
+            // Установка сегодняшней даты по умолчанию в поле ввода
+            entryDateInput.value = getLocalTodayISO();
+
+            // Загрузка данных из localStorage
+            function loadState() {
+                try {
+                    const savedProfile = localStorage.getItem(STORAGE_PROFILE_KEY);
+                    const savedRecords = localStorage.getItem(STORAGE_RECORDS_KEY);
+                    if (savedProfile) {
+                        userProfile = JSON.parse(savedProfile);
+                    }
+                    if (savedRecords) {
+                        wakeRecords = JSON.parse(savedRecords);
+                    }
+                } catch (e) {
+                    console.error('Ошибка чтения localStorage:', e);
+                }
+            }
+
+            function saveProfileToStorage() {
+                try {
+                    localStorage.setItem(STORAGE_PROFILE_KEY, JSON.stringify(userProfile));
+                } catch (e) {
+                    console.error('Ошибка сохранения профиля:', e);
+                }
+            }
+
+            function saveRecordsToStorage() {
+                try {
+                    localStorage.setItem(STORAGE_RECORDS_KEY, JSON.stringify(wakeRecords));
+                } catch (e) {
+                    console.error('Ошибка сохранения записей:', e);
+                }
+            }
+
+            // Переключение экранов (Регистрация <-> Приложение)
+            function updateScreenVisibility() {
+                if (userProfile && userProfile.firstName) {
+                    welcomeScreen.classList.add('hidden');
+                    appScreen.classList.remove('hidden');
+                    renderProfileHeader();
+                    renderAll();
+                } else {
+                    welcomeScreen.classList.remove('hidden');
+                    appScreen.classList.add('hidden');
+                }
+            }
+
+            // Отрисовка шапки профиля
+            function renderProfileHeader() {
+                if (!userProfile) return;
+                displayFullname.textContent = `${userProfile.firstName} ${userProfile.lastName}`;
+                const cleanNick = userProfile.nickname.replace(/^@+/, '');
+                displayNickname.textContent = `@${cleanNick}`;
+                
+                const initials = (userProfile.firstName[0] || '') + (userProfile.lastName[0] || '');
+                avatarInitials.textContent = initials.toUpperCase();
+            }
+
+            // Обработка формы профиля
+            profileForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const firstName = firstNameInput.value.trim();
+                const lastName = lastNameInput.value.trim();
+                const nickname = nicknameInput.value.trim().replace(/^@+/, '');
+
+                if (!firstName || !lastName || !nickname) return;
+
+                userProfile = { firstName, lastName, nickname };
+                saveProfileToStorage();
+                updateScreenVisibility();
+                showToast(`Добро пожаловать, ${firstName}!`, '🌙');
+            });
+
+            // Кнопка редактирования профиля
+            document.getElementById('edit-profile-btn').addEventListener('click', () => {
+                if (userProfile) {
+                    firstNameInput.value = userProfile.firstName;
+                    lastNameInput.value = userProfile.lastName;
+                    nicknameInput.value = userProfile.nickname;
+                }
+                welcomeScreen.classList.remove('hidden');
+                appScreen.classList.add('hidden');
+            });
+
+            // Выбор самочувствия (эмодзи)
+            moodButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    moodButtons.forEach(b => b.classList.remove('bg-indigo-600/40', 'ring-1', 'ring-indigo-400'));
+                    btn.classList.add('bg-indigo-600/40', 'ring-1', 'ring-indigo-400');
+                    selectedMoodInput.value = btn.dataset.mood;
+                });
+            });
+
+            // Кнопка «Быстрый подъём (Сейчас)»
+            document.getElementById('quick-wake-btn').addEventListener('click', () => {
+                const now = new Date();
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                actualTimeInput.value = `${hours}:${minutes}`;
+                entryDateInput.value = getLocalTodayISO();
+                showToast(`Текущее время ${hours}:${minutes} подставлено в «Факт»`, '⚡');
+            });
+
+            /**
+             * Расчёт разницы в минутах между планом и фактом.
+             * Положительное число = проспал (опоздал).
+             * Отрицательное число = встал раньше плана.
+             * 0 = ровно вовремя.
+             */
+            function calculateDiffMinutes(planStr, actualStr) {
+                const [pH, pM] = planStr.split(':').map(Number);
+                const [aH, aM] = actualStr.split(':').map(Number);
+                const planTotal = pH * 60 + pM;
+                const actualTotal = aH * 60 + aM;
+                return actualTotal - planTotal;
+            }
+
+            // Форматирование разницы минут в читаемый текст и стили
+            function formatDiffBadge(diffMinutes) {
+                const absMin = Math.abs(diffMinutes);
+                const hours = Math.floor(absMin / 60);
+                const mins = absMin % 60;
+                const timeText = hours > 0 ? `${hours} ч ${mins} мин` : `${mins} мин`;
+
+                if (diffMinutes === 0) {
+                    return {
+                        label: 'Ровно вовремя 🎯',
+                        classes: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+                        status: 'ontime'
+                    };
+                } else if (diffMinutes < 0) {
+                    return {
+                        label: `-${timeText} (раньше плана)`,
+                        classes: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+                        status: 'early'
+                    };
+                } else if (diffMinutes <= 15) {
+                    return {
+                        label: `+${timeText} (чуть проспал)`,
+                        classes: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+                        status: 'slight_late'
+                    };
+                } else {
+                    return {
+                        label: `+${timeText} (проспал)`,
+                        classes: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+                        status: 'late'
+                    };
+                }
+            }
+
+            // Добавление или обновление записи за конкретную дату
+            wakeForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const date = entryDateInput.value;
+                const plan = planTimeInput.value;
+                const actual = actualTimeInput.value;
+                const mood = selectedMoodInput.value;
+
+                if (!date || !plan || !actual) return;
+
+                const diff = calculateDiffMinutes(plan, actual);
+
+                // Если запись на эту дату уже есть — обновляем её
+                const existingIndex = wakeRecords.findIndex(r => r.date === date);
+                const newRecord = { date, plan, actual, diff, mood };
+
+                if (existingIndex !== -1) {
+                    wakeRecords[existingIndex] = newRecord;
+                    showToast(`Запись за ${formatDateRu(date)} обновлена`, '🔄');
+                } else {
+                    wakeRecords.push(newRecord);
+                    showToast(`Подъём за ${formatDateRu(date)} сохранён!`, '✅');
+                }
+
+                // Сортировка по дате (свежие сверху)
+                wakeRecords.sort((a, b) => b.date.localeCompare(a.date));
+                saveRecordsToStorage();
+
+                // Переключаем календарь на месяц добавленной записи
+                const [y, m] = date.split('-').map(Number);
+                currentCalendarDate = new Date(y, m - 1, 1);
+
+                renderAll();
+                showDayDetails(date);
+            });
+
+            // Удаление одной записи
+            window.deleteRecord = function(date) {
+                wakeRecords = wakeRecords.filter(r => r.date !== date);
+                saveRecordsToStorage();
+                renderAll();
+                showToast('Запись удалена', '🗑️');
+            };
+
+            // Очистка всех записей (с двухэтапным подтверждением без confirm())
+            const clearBtn = document.getElementById('clear-data-btn');
+            let clearConfirmState = false;
+            let clearResetTimer;
+
+            clearBtn.addEventListener('click', () => {
+                if (!clearConfirmState) {
+                    clearConfirmState = true;
+                    clearBtn.textContent = 'Нажмите ещё раз для удаления';
+                    clearBtn.classList.add('bg-rose-600', 'text-white');
+                    clearResetTimer = setTimeout(() => {
+                        clearConfirmState = false;
+                        clearBtn.textContent = 'Очистить записи';
+                        clearBtn.classList.remove('bg-rose-600', 'text-white');
+                    }, 3000);
+                } else {
+                    clearTimeout(clearResetTimer);
+                    clearConfirmState = false;
+                    clearBtn.textContent = 'Очистить записи';
+                    clearBtn.classList.remove('bg-rose-600', 'text-white');
+                    wakeRecords = [];
+                    saveRecordsToStorage();
+                    renderAll();
+                    showToast('Все записи очищены', '🧹');
+                }
+            });
+
+            // Заполнение демо-данными за текущий выбранный месяц
+            document.getElementById('demo-data-btn').addEventListener('click', () => {
+                const year = currentCalendarDate.getFullYear();
+                const month = currentCalendarDate.getMonth();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const today = new Date();
+
+                // Удаляем старые записи этого месяца, чтобы не дублировать
+                const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+                wakeRecords = wakeRecords.filter(r => !r.date.startsWith(monthPrefix));
+
+                const moods = ['😴', '😐', '⚡'];
+                const plans = ['06:30', '07:00', '07:30'];
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    // Не заполняем будущие дни, если это текущий месяц и год
+                    if (year === today.getFullYear() && month === today.getMonth() && d > today.getDate()) {
+                        break;
+                    }
+                    // Пропускаем пару случайных дней для реалистичности
+                    if (d % 9 === 0) continue;
+
+                    const dateStr = `${monthPrefix}-${String(d).padStart(2, '0')}`;
+                    const plan = plans[d % plans.length];
+                    const [pH, pM] = plan.split(':').map(Number);
+
+                    // Генерируем реалистичное отклонение: от -15 мин до +45 мин
+                    const rand = Math.random();
+                    let offset;
+                    if (rand < 0.55) {
+                        // Встал вовремя или раньше (-15 .. 0)
+                        offset = -Math.floor(Math.random() * 16);
+                    } else if (rand < 0.8) {
+                        // Чуть проспал (+1 .. +15)
+                        offset = Math.floor(Math.random() * 15) + 1;
+                    } else {
+                        // Сильно проспал (+16 .. +50)
+                        offset = Math.floor(Math.random() * 35) + 16;
+                    }
+
+                    const actualTotal = pH * 60 + pM + offset;
+                    const aH = String(Math.floor(actualTotal / 60)).padStart(2, '0');
+                    const aM = String(actualTotal % 60).padStart(2, '0');
+                    const actual = `${aH}:${aM}`;
+
+                    const mood = offset <= 0 ? '⚡' : (offset <= 15 ? '😐' : '😴');
+                    wakeRecords.push({
+                        date: dateStr,
+                        plan,
+                        actual,
+                        diff: offset,
+                        mood
+                    });
+                }
+
+                wakeRecords.sort((a, b) => b.date.localeCompare(a.date));
+                saveRecordsToStorage();
+                renderAll();
+                showToast('Демо-данные за месяц успешно сгенерированы!', '🎉');
+            });
+
+            // Форматирование даты YYYY-MM-DD -> DD.MM.YYYY
+            function formatDateRu(isoDate) {
+                const [y, m, d] = isoDate.split('-');
+                return `${d}.${m}.${y}`;
+            }
+
+            // Рендер основной таблицы
+            function renderTable() {
+                recordsTableBody.innerHTML = '';
+
+                if (wakeRecords.length === 0) {
+                    emptyTableMsg.classList.remove('hidden');
+                    return;
+                }
+                emptyTableMsg.classList.add('hidden');
+
+                wakeRecords.forEach(record => {
+                    const badge = formatDiffBadge(record.diff);
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-slate-800/40 transition';
+                    tr.innerHTML = `
+                        <td class="py-3.5 px-4 font-medium text-slate-200 whitespace-nowrap">${formatDateRu(record.date)}</td>
+                        <td class="py-3.5 px-4 font-mono text-indigo-300 font-semibold">${record.plan}</td>
+                        <td class="py-3.5 px-4 font-mono text-amber-300 font-semibold">${record.actual}</td>
+                        <td class="py-3.5 px-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border ${badge.classes}">
+                                ${badge.label}
+                            </span>
+                        </td>
+                        <td class="py-3.5 px-4 text-center text-lg">${record.mood || '😐'}</td>
+                        <td class="py-3.5 px-4 text-right">
+                            <button onclick="deleteRecord('${record.date}')" class="text-slate-500 hover:text-rose-400 transition p-1.5 rounded-lg hover:bg-slate-800 cursor-pointer" title="Удалить запись">
+                                ✕
+                            </button>
+                        </td>
+                    `;
+                    recordsTableBody.appendChild(tr);
+                });
+            }
+
+            // Переключение месяцев в календаре
+            document.getElementById('prev-month-btn').addEventListener('click', () => {
+                currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
+                renderCalendarAndStats();
+            });
+
+            document.getElementById('next-month-btn').addEventListener('click', () => {
+                currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
+                renderCalendarAndStats();
+            });
+
+            // Показать детали конкретного дня в боковой карточке
+            function showDayDetails(dateStr) {
+                detailDate.textContent = formatDateRu(dateStr);
+                const record = wakeRecords.find(r => r.date === dateStr);
+
+                if (!record) {
+                    detailContent.innerHTML = `
+                        <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800 text-slate-400 text-xs">
+                            За этот день нет данных о подъёме. Вы можете выбрать эту дату в форме выше и добавить запись.
+                        </div>
+                    `;
+                    return;
+                }
+
+                const badge = formatDiffBadge(record.diff);
+                detailContent.innerHTML = `
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+                            <span class="text-xs text-slate-400">1. План подъёма:</span>
+                            <span class="font-mono font-bold text-indigo-300 text-base">${record.plan}</span>
+                        </div>
+                        <div class="flex justify-between items-center bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+                            <span class="text-xs text-slate-400">2. Факт подъёма:</span>
+                            <span class="font-mono font-bold text-amber-300 text-base">${record.actual}</span>
+                        </div>
+                        <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800 space-y-1.5">
+                            <span class="text-xs text-slate-400 block">3. Результат:</span>
+                            <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-semibold border ${badge.classes}">
+                                ${badge.label}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+                            <span class="text-xs text-slate-400">Самочувствие утром:</span>
+                            <span class="text-xl">${record.mood || '😐'}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Рендер календаря и расчёт статистики за выбранный месяц
+            function renderCalendarAndStats() {
+                const year = currentCalendarDate.getFullYear();
+                const month = currentCalendarDate.getMonth();
+
+                // Название месяца на русском
+                const monthNames = [
+                    'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+                    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+                ];
+                currentMonthLabel.textContent = `${monthNames[month]} ${year}`;
+
+                // Фильтруем записи за выбранный месяц
+                const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+                const monthRecords = wakeRecords
+                    .filter(r => r.date.startsWith(monthPrefix))
+                    .sort((a, b) => a.date.localeCompare(b.date));
+
+                // Расчёт статистики
+                let onTimeCount = 0;
+                let oversleptCount = 0;
+                let totalDiff = 0;
+                let currentStreak = 0;
+                let maxStreak = 0;
+
+                monthRecords.forEach(r => {
+                    totalDiff += r.diff;
+                    if (r.diff <= 0) {
+                        onTimeCount++;
+                        currentStreak++;
+                        if (currentStreak > maxStreak) maxStreak = currentStreak;
+                    } else {
+                        oversleptCount++;
+                        currentStreak = 0;
+                    }
+                });
+
+                statOntime.textContent = onTimeCount;
+                statOverslept.textContent = oversleptCount;
+                statStreak.textContent = maxStreak;
+
+                if (monthRecords.length > 0) {
+                    const avg = Math.round(totalDiff / monthRecords.length);
+                    if (avg === 0) {
+                        statAvgDiff.textContent = '0 мин (идеально)';
+                        statAvgDiff.className = 'text-xl sm:text-2xl font-extrabold text-emerald-400';
+                    } else if (avg < 0) {
+                        statAvgDiff.textContent = `${avg} мин (раньше)`;
+                        statAvgDiff.className = 'text-xl sm:text-2xl font-extrabold text-emerald-400';
+                    } else {
+                        statAvgDiff.textContent = `+${avg} мин`;
+                        statAvgDiff.className = 'text-xl sm:text-2xl font-extrabold text-rose-400';
+                    }
+                } else {
+                    statAvgDiff.textContent = '—';
+                    statAvgDiff.className = 'text-xl sm:text-2xl font-extrabold text-slate-400';
+                }
+
+                // Построение сетки календаря (Пн = 0 ... Вс = 6)
+                calendarGrid.innerHTML = '';
+                const firstDayOfMonth = new Date(year, month, 1).getDay();
+                const startOffset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+                // Пустые ячейки до 1-го числа
+                for (let i = 0; i < startOffset; i++) {
+                    const emptyCell = document.createElement('div');
+                    emptyCell.className = 'aspect-square rounded-xl bg-transparent';
+                    calendarGrid.appendChild(emptyCell);
+                }
+
+                // Карта записей для быстрого доступа
+                const recordMap = {};
+                monthRecords.forEach(r => { recordMap[r.date] = r; });
+
+                const todayISO = getLocalTodayISO();
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = `${monthPrefix}-${String(day).padStart(2, '0')}`;
+                    const rec = recordMap[dateStr];
+                    const isToday = dateStr === todayISO;
+
+                    const cell = document.createElement('button');
+                    cell.type = 'button';
+
+                    let colorClasses = 'bg-slate-800/60 border-slate-800 text-slate-400 hover:border-slate-600';
+                    let tooltip = `${formatDateRu(dateStr)}: нет данных`;
+
+                    if (rec) {
+                        if (rec.diff <= 0) {
+                            colorClasses = 'bg-emerald-500/20 border-emerald-500/60 text-emerald-200 hover:bg-emerald-500/30';
+                            tooltip = `${formatDateRu(dateStr)}: Вовремя (${rec.actual})`;
+                        } else if (rec.diff <= 15) {
+                            colorClasses = 'bg-amber-500/20 border-amber-500/60 text-amber-200 hover:bg-amber-500/30';
+                            tooltip = `${formatDateRu(dateStr)}: +${rec.diff} мин (${rec.actual})`;
+                        } else {
+                            colorClasses = 'bg-rose-500/20 border-rose-500/60 text-rose-200 hover:bg-rose-500/30';
+                            tooltip = `${formatDateRu(dateStr)}: Проспал +${rec.diff} мин (${rec.actual})`;
+                        }
+                    }
+
+                    const todayRing = isToday ? 'ring-2 ring-indigo-400 ring-offset-2 ring-offset-slate-950' : '';
+
+                    cell.className = `aspect-square rounded-xl border flex flex-col items-center justify-center p-1 transition transform hover:scale-105 cursor-pointer ${colorClasses} ${todayRing}`;
+                    cell.title = tooltip;
+                    cell.innerHTML = `
+                        <span class="text-xs sm:text-sm font-bold">${day}</span>
+                        ${rec ? `<span class="text-[10px] leading-none mt-0.5">${rec.mood || ''}</span>` : ''}
+                    `;
+
+                    cell.addEventListener('click', () => {
+                        showDayDetails(dateStr);
+                    });
+
+                    calendarGrid.appendChild(cell);
+                }
+            }
+
+            function renderAll() {
+                renderTable();
+                renderCalendarAndStats();
+            }
+
+            // Инициализация приложения
+            loadState();
+            updateScreenVisibility();
+        });
+    </script>
+</body>
+</html>
